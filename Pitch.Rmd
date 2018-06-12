@@ -1,0 +1,43 @@
+---
+title: "Capstone Pitch"
+author: "Mingda Wang"
+date: "Jun 11 2018"
+output:
+  slidy_presentation: default
+---
+
+```{r setup, message=FALSE, include=FALSE}
+library(knitr)
+library(leaflet)
+Sys.setlocale("LC_ALL","English")
+opts_chunk$set(eval = TRUE, echo = TRUE)
+```
+
+## Summary
+The aim of the shiny application is to predict next word based on previous user inputs.
+
+The Shiny application can be found at: [ShinyApps.io](https://mingdawang.shinyapps.io/Swifykey_Capstone/)
+
+The dataset is supplied by SwiftKey, and profanity words are from [Luis von Ahn's Research Group @ Carnegie Mellon University](https://www.cs.cmu.edu/~biglou/resources/).
+
+## Instructions
+Users are presented with a text input that allows users to type any words they want to. 
+
+Depending on the user input, up to 5 of next predicted words will be prompted in the main panel. This is more flexible than having only 1 prediction.
+
+## Model Description
+The model after compression is 3.7 Mb on disk space. The RAM usage for the model will be around 28.4 Mb. The accuracy for mixed cases of 2-5 gram prediction is around 24.5%.
+
+The model is contstructed by using 10% of each en_US data provided by Swiftkey. Then the ngram model was constructed with maximum probability prediction. After pruning and processing, the finalized algorithm will incorportate ngram model with only common terms, and for unsual terms, stupid backoff is implemented.
+
+Full Github repository can be found here: [Swifykey_Capstone](https://github.com/wanv1171/Data_Science_Capstone)
+
+
+## Sample Output
+Sample output:  
+This is [a, the, not, what, my]  
+This is a [great, good, very, new, big]  
+This is a great [resource, book, time, way, game]  
+This is a great resource [for]  
+ 
+The words in square brackets are the predictions.
