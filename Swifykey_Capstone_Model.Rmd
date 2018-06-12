@@ -1,0 +1,658 @@
+---
+title: "Swiftkey_Capstone_Model"
+author: "Mingda Wang"
+date: "Jun 11 2018"
+output: html_document
+---
+
+# Initial Setup
+Packages: knitr, text2vec, tokenizers, tidyr, dplyr, magrittr, data.table, parallel, doParallel
+Locale: English
+Eval, Echo: True
+Seed: 12221
+
+```{r setup, message=FALSE}
+library("knitr")
+library("text2vec")
+library("tokenizers")
+library("tidyr")
+library("dplyr")
+library("magrittr")
+library("data.table")
+library("parallel")
+library("doParallel")
+Sys.setlocale("LC_ALL","English")
+opts_chunk$set(eval = TRUE, echo = TRUE)
+set.seed(12221)
+filePath <- "D:/Documents/R/final/en_US/"
+```
+
+# Overview
+This project will show the necessary steps to reproduce a prediction dictionary for 2~5 grams. Also, this document will show the necessary steps to use the dictionary for prediction purposes.
+
+# Approach
+### Dataset Selection
+For starter, I will use the en_US dataset provided by Swifykey. The steps of the document should be reproducible for other languages in the Swifykey dataset. I have preprocessed the data using Python to remove extra control characters, such as SUB or NUL, and I have also replaced all special characters such as @ or $ into space.
+
+### Differentiate Subject
+The goal is to build a prediction on the next possible user input using ngram + backoff model. Since our data have different target area, blogs, news, twitter, and online review. It would make more sense to treat these areas differently, and have a model that will differentiate each area.
+
+To further investigate accuracy on subject differentiation, I will also combine all the datasets together, and evaluate if the accuracy will indeed be higher if we differentiate subjects.
+
+### Training Dataset
+We will sample around 80% of the data for each dataset as the training data, and rest 20% as the testing data. Then a random 10% sample from all datasets are atually used to build vocabulary list. I have already separted out the training data and testing data, therefore, I will load the data directly.
+
+### Target Platform
+The target platform is cellphones and handheld devices. These devices generally will require more efforts to type a series of words in compare to keybord. Therefore, it will be helpful to tap to select words than type all of them out one by one.
+
+### Model Evaluation
+The model will be reviewed by using the following questions:
+  1. Amount of RAM
+  2. File size of model
+  3. Processing time
+  4. Model accuracy
+
+### Project Plan
+I have listed the following steps needed for the construction of model:  
+
+1. Subset data into training & testing
+2. Sample 10% of each dataset into training
+3. For the combined training dataset, tokenize data into 1-5 grams
+4. Construct a list that include 1~5 grams model
+5. For combined testing data, sample 1000 lines for each 2-5 grams
+6. Tokenize testing data, and testing for each 2-5 grams
+
+# Model Construction
+### Data Loading
+We will load the training data first. In the meantime, we will also load the profanity words list, the list is from [Luis von Ahn's Research Group @ Carnegie Mellon University](https://www.cs.cmu.edu/~biglou/resources/)
+```{r loadTraining, eval=FALSE}
+twitterTrainFile <- "twitter_Train.txt"
+blogsTrainFile <- "blogs_Train.txt"
+newsTrainFile <- "news_Train.txt"
+
+twitterTrain <- readLines(con = paste(filePath, twitterTrainFile, sep=""))
+blogsTrain <- readLines(con = paste(filePath, blogsTrainFile, sep=""))
+newsTrain <- readLines(con = paste(filePath, newsTrainFile, sep=""))
+
+rm(twitterTrainFile)
+rm(blogsTrainFile)
+rm(newsTrainFile)
+```
+
+```{r loadBadwords}
+badWordsFile <- "bad-words.txt"
+badWords <- readLines(con = paste(filePath, badWordsFile, sep=""))
+rm(badWordsFile)
+```
+### Tokenize Data
+I will use a five gram model for the final prediction. Stopwods list of profanity words will be filtered out.
+
+The iterator and vocabulary functions support parrallel, I will use all available cores but 2 to tokenize the words. Only 10% of the training dataset will be used to build the vocabulary list. The text2vec provides the ability to aggregate term frequency and document appearances without building dtm. This process will be faster, and less resource intensive.
+
+For each n-gram model, I will include two models, one has all n-gram terms in the training dataset. Another one include only the terms that has appeared more than once across the training dataset. The smaller dataset will include less terms, which might yield a less accuracy, but will cost significantly less resources.
+
+```{r createIterator, eval=FALSE}
+twitterSample <- twitterTrain[sample(length(twitterTrain),length(twitterTrain)*0.1)]
+blogsSample <- blogsTrain[sample(length(blogsTrain),length(blogsTrain)*0.1)]
+newsSample <- newsTrain[sample(length(newsTrain),length(newsTrain)*0.1)]
+
+training <- c(twitterSample, blogsSample, newsSample)
+
+cl <- makeCluster(detectCores() - 2)
+registerDoParallel(cl)
+
+trainIoK <- itoken_parallel(training,
+                     preprocessor = tolower,
+                     tokenizer = tokenize_words)
+
+rm(twitterSample)
+rm(blogsSample)
+rm(newsSample)
+rm(newsTrain)
+rm(twitterTrain)
+rm(blogsTrain)
+```
+### Bigram Vocabulary
+```{r bigramVocab, eval=FALSE}
+vocabBi<- create_vocabulary(trainIoK, ngram=c(2,2), stopwords=badWords)
+
+vocabBi <- vocabBi %>% separate(term, c("Pred1", "Predicted"), sep="_")
+newCabBi <- vocabBi[vocabBi$doc_count > 1,]
+
+vocabBi <- vocabBi %>% arrange(desc(doc_count)) %>% group_by(Pred1) %>% slice(1:5)
+newCabBi <- newCabBi %>% arrange(desc(doc_count)) %>% group_by(Pred1) %>% slice(1:5)
+
+class(vocabBi) <- "data.frame"
+class(newCabBi) <- "data.frame"
+
+vocabBi <- data.frame(vocabBi[,c("Pred1","Predicted")])
+newCabBi <- data.frame(newCabBi[,c("Pred1","Predicted")])
+```
+
+### Trigram Vocabulary
+```{r trigramVocab, eval=FALSE}
+vocabTri<- create_vocabulary(trainIoK, ngram=c(3,3), stopwords=badWords)
+
+vocabTri <- vocabTri %>% separate(term, c("Pred1", "Pred2", "Predicted"), sep="_")
+newCabTri <- vocabTri[vocabTri$doc_count > 1, ]
+
+vocabTri <- vocabTri %>% arrange(desc(doc_count)) %>% group_by(Pred1, Pred2) %>% slice(1:5)
+newCabTri <- newCabTri %>% arrange(desc(doc_count)) %>% group_by(Pred1, Pred2) %>% slice(1:5)
+
+class(vocabTri) <- "data.frame"
+vocabTri <- data.frame(vocabTri[,c("Pred1","Pred2","Predicted")])
+
+class(newCabTri) <- "data.frame"
+newCabTri <- data.frame(newCabTri[,c("Pred1","Pred2","Predicted")])
+```
+
+### Fourgram Vocabulary
+```{r fourgramVocab, eval=FALSE}
+vocabFour<- create_vocabulary(trainIoK, ngram=c(4,4), stopwords=badWords)
+
+vocabFour <- vocabFour %>% separate(term, c("Pred1", "Pred2", "Pred3", "Predicted"), sep="_")
+newCabFour <- vocabFour[vocabFour$doc_count > 1, ]
+
+vocabFour <- vocabFour %>% arrange(desc(doc_count)) %>% group_by(Pred1, Pred2, Pred3) %>% slice(1:5)
+newCabFour <- newCabFour %>% arrange(desc(doc_count)) %>% group_by(Pred1, Pred2, Pred3) %>% slice(1:5)
+
+class(vocabFour) <- "data.frame"
+class(newCabFour) <- "data.frame"
+
+vocabFour <- data.frame(vocabFour[,c("Pred1","Pred2","Pred3","Predicted")])
+newCabFour <- data.frame(newCabFour[,c("Pred1","Pred2","Pred3","Predicted")])
+```
+
+### Fivegram Vocabulary
+```{r fivegramVocab, eval=FALSE}
+vocabFive<- create_vocabulary(trainIoK, ngram=c(5,5), stopwords=badWords)
+
+vocabFive <- vocabFive %>% separate(term, c("Pred1", "Pred2", "Pred3", "Pred4", "Predicted"), sep="_")
+newCabFive <- vocabFive[vocabFive$doc_count > 1, ]
+
+vocabFive <- vocabFive %>% arrange(desc(doc_count)) %>% group_by(Pred1, Pred2, Pred3, Pred4) %>% slice(1:5)
+newCabFive <- newCabFive %>% arrange(desc(doc_count)) %>% group_by(Pred1, Pred2, Pred3, Pred4) %>% slice(1:5)
+
+class(vocabFive) <- "data.frame"
+class(newCabFive) <- "data.frame"
+
+vocabFive <- data.frame(vocabFive[,c("Pred1","Pred2","Pred3","Pred4","Predicted")])
+newCabFive <- data.frame(newCabFive[,c("Pred1","Pred2","Pred3","Pred4","Predicted")])
+```
+
+### Add Models to List
+```{r modelList, eval=FALSE}
+hugePred <- list("the",vocabBi,vocabTri,vocabFour,vocabFive)
+miniPred <- list("the",newCabBi,newCabTri,newCabFour,newCabFive)
+```
+
+### Remove Useless Variables
+```{r varRemoval, eval=FALSE}
+rm(newCabBi)
+rm(newCabTri)
+rm(newCabFour)
+rm(newCabFive)
+
+rm(training)
+rm(trainIoK)
+
+rm(vocabBi)
+rm(vocabTri)
+rm(vocabFour)
+rm(vocabFive)
+rm(cl)
+```
+
+
+### Save Listed Models
+```{r saveModel, eval=FALSE}
+saveRDS(hugePred, file=paste(filePath,"models/","hugeDict.rds", sep=""), compress=TRUE)
+saveRDS(miniPred, file=paste(filePath,"models/","miniDict.rds", sep=""), compress=TRUE)
+```
+
+# Accuracy Testing
+### Load Model
+```{r loadModel}
+hugePred <- readRDS(file=paste(filePath,"models/","hugeDict.rds", sep=""))
+miniPred <- readRDS(file=paste(filePath,"models/","miniDict.rds", sep=""))
+
+print(data.frame("Filesize" = c(round(file.info(paste(filePath,"models/","hugeDict.rds",sep=""))$size/1024/1024,1),
+                                round(file.info(paste(filePath,"models/","miniDict.rds",sep=""))$size/1024/1024,1)),
+                 "RAM Size" = c(format(object.size(hugePred), units="Mb"),
+                                format(object.size(miniPred), units="Mb"))))
+```
+In the above table, the first row is the physical and ram sizes needed for the huge dictionary file. The second is for the minified dictionary. There is a huge reduction in file size and ram needed when less common terms removed. However, I will do more accuracy testing before concluding the minified dictionary is better.
+
+### Prediction Function
+Both ngram and ngram2 are the actual prediction algorithm except ngram uses hugePred and ngram2 uses miniPred. Besides the prediction algortihm, I wrote a wrapper called ngramPredict, which should be called before the actual prediction. The ngramPredict will firstly take the string, and then determine which the n in ngram. Since the max n for ngram in our model is 5, which means if user has already input in more than 4 words, only the last 4 words will be used to determine the next word.
+
+Also, the ngram and ngram2 functions are recursive. Our model can only have 5 tiers, and the max case is to search down from 5 gram to 1 gram, which means the call stack will not be as resource intensive as if we are doing factorial using recursive.
+
+For ngram, if the answer is not found in nth gram, the algorithm will search for n-1 gram, if it still does not present, it will be search for n-2 gram, etc. If this word never appeared in our training dataset at all, the default is to use 1 gram, which is the word that has appeared in most of the training files. And, in this case, the 1 gram word is "the".
+```{r predictionFuncs}
+ngram <- function(data, ngramFlag) {
+  strParts <- strsplit(data," ", fixed=TRUE)[[1]]
+  
+  length <- length(strParts)
+  
+  model <- hugePred[[ngramFlag]]
+  
+  if(ngramFlag == 1) {
+    predicted <- model
+  }
+  else if(ngramFlag == 2) {
+    predicted <- model[model$Pred1 == strParts[length],"Predicted"]
+  }
+  else if(ngramFlag == 3) {
+    predicted <- model[model$Pred1 == strParts[length-1] & model$Pred2 == strParts[length],"Predicted"]
+  }
+  else if(ngramFlag == 4) {
+    predicted <- model[model$Pred1 == strParts[length-2] & model$Pred2 == strParts[length-1] & model$Pred3 == strParts[length],"Predicted"]
+  }
+  else {
+    predicted <- model[model$Pred1 == strParts[length-3] & model$Pred2 == strParts[length-2] & model$Pred3 == strParts[length-1] & model$Pred4 == strParts[length],"Predicted"]
+  }
+  
+  ifelse(length(predicted) == 0, return(ngram(data, ngramFlag - 1)), return(predicted))
+}
+
+
+ngram2 <- function(data, ngramFlag) {
+  strParts <- strsplit(data," ", fixed=TRUE)[[1]]
+  
+  length <- length(strParts)
+  model <- miniPred[[ngramFlag]]
+  
+  if(ngramFlag == 1) {
+    predicted <- model
+  }
+  else if(ngramFlag == 2) {
+    predicted <- model[model$Pred1 == strParts[length],"Predicted"]
+  }
+  else if(ngramFlag == 3) {
+    predicted <- model[model$Pred1 == strParts[length-1] & model$Pred2 == strParts[length],"Predicted"]
+  }
+  else if(ngramFlag == 4) {
+    predicted <- model[model$Pred1 == strParts[length-2] & model$Pred2 == strParts[length-1] & model$Pred3 == strParts[length],"Predicted"]
+  }
+  else {
+    predicted <- model[model$Pred1 == strParts[length-3] & model$Pred2 == strParts[length-2] & model$Pred3 == strParts[length-1] & model$Pred4 == strParts[length],"Predicted"]
+  }
+  
+  ifelse(length(predicted) == 0, return(ngram(data, ngramFlag - 1)), return(predicted))
+}
+
+ngramPredict <- function(data) {
+  strLength <- length(strsplit(data, " ", fixed = TRUE)[[1]])
+  ngramFlag <- strLength + 1
+  
+  if (ngramFlag > 5) {
+    ngramFlag <- 5
+  }
+  
+  ngram2(data, ngramFlag)
+}
+
+```
+
+### Load Test Files
+```{r testTextFile}
+twitterTestFile <- "twitter_Test.txt"
+blogsTestFile <- "blogs_Test.txt"
+newsTestFile <- "news_Test.txt"
+
+twitterTest <- readLines(con = paste(filePath, twitterTestFile, sep=""))
+blogsTest <- readLines(con = paste(filePath, blogsTestFile, sep=""))
+newsTest <- readLines(con = paste(filePath, newsTestFile, sep=""))
+
+twitterTestSample <- twitterTest[sample(length(twitterTest),length(twitterTest)*0.1)]
+blogsTestSample <- blogsTest[sample(length(blogsTest),length(blogsTest)*0.1)]
+newsTestSample <- newsTest[sample(length(newsTest),length(newsTest)*0.1)]
+
+rm(twitterTestFile)
+rm(blogsTestFile)
+rm(newsTestFile)
+rm(twitterTest)
+rm(blogsTest)
+rm(newsTest)
+
+
+allTest <- c(twitterTestSample,blogsTestSample,newsTestSample)
+
+rm(twitterTestSample)
+rm(blogsTestSample)
+rm(newsTestSample)
+```
+
+### Generate Test Data for 2~5 Gram.
+```{r testData}
+set.seed(222)
+bigramTest <- allTest[sample(length(allTest), 1000)]
+set.seed(333)
+trigramTest <- allTest[sample(length(allTest), 1000)]
+set.seed(444)
+fourgramTest <- allTest[sample(length(allTest), 1000)]
+set.seed(555)
+fivegramTest <- allTest[sample(length(allTest), 1000)]
+
+rm(allTest)
+```
+
+### Test Recording
+```{r testSummary}
+testData <- data.frame(matrix(ncol=5, nrow=0))
+colnames(testData) <- c("Seed", "Model", "Num Tests", "Total Time in Seconds", "Accuracy")
+```
+
+#### Bigram Test Code
+The test will be using ngram and ngram2 functions directly, the wrapper works better when processing user inputs directly.
+```{r bigramTest}
+set.seed(12221)
+
+biTest <- itoken_parallel(bigramTest,
+                          preprocessor = tolower,
+                          tokenizer = tokenize_words)
+
+biTestVocab <- create_vocabulary(biTest, ngram=c(2,2), stopwords=badWords)
+biTestVocab <- biTestVocab %>% separate(term, c('Pred1', "Predicted"), sep="_")
+biTestVocab <- data.frame(biTestVocab[,c("Pred1","Predicted")])
+class(biTestVocab) <- "data.frame"
+
+rm(biTest)
+rm(bigramTest)
+
+#### Bigram Test for Huge Dict
+startTime <- proc.time()
+
+correctness <- apply(biTestVocab[sample(nrow(biTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram(row[1],2)
+  ifelse(row[2] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Bigram Huge Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+rm(startTime)
+rm(finishTime)
+rm(correctness)
+
+#### Bigram Test for Mini Dict
+startTime <- proc.time()
+
+correctness <- apply(biTestVocab[sample(nrow(biTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram2(row[1],2)
+  ifelse(row[2] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Bigram Mini Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+rm(startTime)
+rm(finishTime)
+rm(correctness)
+```
+
+#### Trigram Test Code
+```{r trigramTest}
+set.seed(12221)
+triTest <- itoken_parallel(trigramTest,
+                          preprocessor = tolower,
+                          tokenizer = tokenize_words)
+
+triTestVocab <- create_vocabulary(triTest, ngram=c(3,3), stopwords=badWords)
+triTestVocab <- triTestVocab %>% separate(term, c('Pred1', "Pred2", "Predicted"), sep="_")
+triTestVocab <- data.frame(triTestVocab[,c("Pred1","Pred2","Predicted")])
+class(triTestVocab) <- "data.frame"
+
+rm(triTest)
+rm(trigramTest)
+
+#### Trigram Test for Huge Dict
+startTime <- proc.time()
+
+correctness <- apply(triTestVocab[sample(nrow(triTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram(paste(row[1],row[2], collapse=" "),2)
+  ifelse(row[3] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Trigram Huge Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+#### Trigram Test for Mini Dict
+startTime <- proc.time()
+
+correctness <- apply(triTestVocab[sample(nrow(triTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram2(paste(row[1],row[2], collapse=" "),2)
+  ifelse(row[3] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Trigram Mini Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+rm(startTime)
+rm(finishTime)
+rm(correctness)
+```
+
+#### Fourgram Test Code
+```{r fourgramTest}
+set.seed(12221)
+fourTest <- itoken_parallel(fourgramTest,
+                           preprocessor = tolower,
+                           tokenizer = tokenize_words)
+
+fourTestVocab <- create_vocabulary(fourTest, ngram=c(4,4), stopwords=badWords)
+fourTestVocab <- fourTestVocab %>% separate(term, c('Pred1', "Pred2", "Pred3", "Predicted"), sep="_")
+fourTestVocab <- data.frame(fourTestVocab[,c("Pred1","Pred2","Pred3","Predicted")])
+class(fourTestVocab) <- "data.frame"
+
+rm(fourTest)
+rm(fourgramTest)
+
+#### Fourgram Test for Huge Dict
+startTime <- proc.time()
+
+correctness <- apply(fourTestVocab[sample(nrow(fourTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram(paste(row[1],row[2],row[3], collapse=" "),2)
+  ifelse(row[4] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Fourgram Huge Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+#### Fourgram Test for Mini Dict
+startTime <- proc.time()
+
+correctness <- apply(fourTestVocab[sample(nrow(fourTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram2(paste(row[1],row[2],row[3], collapse=" "),2)
+  ifelse(row[4] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Fourgram Mini Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+rm(startTime)
+rm(finishTime)
+rm(correctness)
+```
+
+#### Fivegram Test Code
+```{r fivgramTest}
+set.seed(12221)
+fiveTest <- itoken_parallel(fivegramTest,
+                            preprocessor = tolower,
+                            tokenizer = tokenize_words)
+
+fiveTestVocab <- create_vocabulary(fiveTest, ngram=c(5,5), stopwords=badWords)
+fiveTestVocab <- fiveTestVocab %>% separate(term, c('Pred1', "Pred2", "Pred3", "Pred4", "Predicted"), sep="_")
+fiveTestVocab <- data.frame(fiveTestVocab[,c("Pred1","Pred2","Pred3","Pred4","Predicted")])
+class(fiveTestVocab) <- "data.frame"
+
+rm(fiveTest)
+rm(fivegramTest)
+
+#### Fivegram Test for Huge Dict
+startTime <- proc.time()
+
+correctness <- apply(fiveTestVocab[sample(nrow(fiveTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram(paste(row[1],row[2],row[3],row[4], collapse=" "),2)
+  ifelse(row[5] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Fivegram Huge Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+#### Fivegram Test for Huge Dict
+startTime <- proc.time()
+
+correctness <- apply(fiveTestVocab[sample(nrow(fiveTestVocab),1000),], 1, FUN=function(row) {
+  predicted <- ngram2(paste(row[1],row[2],row[3],row[4], collapse=" "),2)
+  ifelse(row[5] %in% predicted, return(TRUE), return(FALSE))
+})
+
+finishTime <- proc.time()
+
+testData[nrow(testData)+1,] <- c("12221", "Fivegram Mini Dictionary", "1000", round((finishTime - startTime)[3], 3), paste(round(sum(correctness) / 1000 * 100, 2), "%", collapse = ""))
+
+rm(startTime)
+rm(finishTime)
+rm(correctness)
+```
+
+#### Mixgram Test Code
+```{r mixgramTest}
+set.seed(12221)
+mixTest <- list(biTestVocab[sample(nrow(biTestVocab), 100),],
+                triTestVocab[sample(nrow(triTestVocab), 100),],
+                fourTestVocab[sample(nrow(fourTestVocab), 100),],
+                fiveTestVocab[sample(nrow(fiveTestVocab), 100),])
+
+score <- vector(mode="numeric")
+
+startTime <- proc.time()
+
+for (index in 1:100) {
+  roundScore <- 0
+  
+  bigram <- mixTest[[1]][index,]$Pred1
+  bigramAnswer <- mixTest[[1]][index,]$Predicted
+  
+  trigram <- paste(mixTest[[2]][index,]$Pred1, mixTest[[2]][index,]$Pred2, collapse=" ")
+  trigramAnswer <- mixTest[[2]][index,]$Predicted
+  
+  fourgram <- paste(mixTest[[3]][index,]$Pred1, mixTest[[3]][index,]$Pred2, mixTest[[3]][index,]$Pred3, collapse=" ")
+  fourgramAnswer <- mixTest[[3]][index,]$Predicted
+  
+  fivegram <- paste(mixTest[[4]][index,]$Pred1, mixTest[[4]][index,]$Pred2, mixTest[[4]][index,]$Pred3, mixTest[[4]][index,]$Pred4, collapse=" ")
+  fivegramAnswer <- mixTest[[4]][index,]$Predicted
+  
+  bigramPred <- ngramPredict(bigram)
+  trigramPred <- ngramPredict(trigram)
+  fourgramPred <- ngramPredict(fourgram)
+  fivegramPred <- ngramPredict(fivegram)
+  
+  if (bigramAnswer %in% bigramPred) {
+    roundScore <- roundScore + 1
+  }
+  
+  if(trigramAnswer %in% trigramPred) {
+    roundScore <- roundScore + 1
+  }
+  
+  if(fourgramAnswer %in% fourgramPred) {
+    roundScore <- roundScore + 1
+  }
+  
+  if(fivegramAnswer %in% fivegramPred) {
+    roundScore <- roundScore + 1
+  }
+  
+  score[index] <- roundScore
+  roundScore <- 0
+}
+
+finishTime <- proc.time()
+
+testData[nrow(testData) + 1,] <- c("12221", "Mix Case Mini Dictionary", "400", round((finishTime - startTime)[3], 3), paste(round(sum(score) / 400 * 100, 2), "%", collapse = ""))
+
+rm(score)
+rm(roundScore)
+rm(index)
+rm(biTestVocab)
+rm(triTestVocab)
+rm(fourTestVocab)
+rm(fiveTestVocab)
+rm(mixTest)
+rm(bigram)
+rm(bigramAnswer)
+rm(bigramPred)
+rm(trigram)
+rm(trigramAnswer)
+rm(trigramPred)
+rm(fourgram)
+rm(fourgramAnswer)
+rm(fourgramPred)
+rm(fivegram)
+rm(fivegramAnswer)
+rm(fivegramPred)
+rm(badWords)
+rm(startTime)
+rm(finishTime)
+```
+
+#### Test With Unexpected Inputs
+For unknown terms, stupid backoff will be used. We can verify if the prediction function is working by read model printout directly.
+```{r unknownTerm}
+print(ngramPredict("XXXX XXXX XXXXX XXX XXXXX XXXX the"))
+```
+With these words, we can expect to see it will have the same output as bigram with "the" as predictor. We can test if this is the case.
+```{r unknownTermVerify}
+print(miniPred[[2]][miniPred[[2]]$Pred1 == "the", "Predicted"])
+```
+We can see the prints are the same, which means out the backoff algorithm is working as it should.
+
+
+#### Test Results Summary
+```{r}
+print(testData)
+```
+From the above results, we can see that huge dictionary generally have a better accuracy than mini dictionary. However, the difference is very small. In addition, the processing time reduction is huge, and mini dictionary uses 1/2 time of processing time needed by huge dictionary. As for the mix case, most of the time are consumed by for loop instead of lookup operation.
+
+Now, we can conclude that the mini dictionary is the best option to go, and the small resources needed by the mini dictionary makes it better for mobile devices.
+
+#### Final Cleanup
+```{r}
+rm(hugePred)
+rm(miniPred)
+rm(testData)
+rm(filePath)
+rm(ngram)
+rm(ngram2)
+rm(ngramPredict)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

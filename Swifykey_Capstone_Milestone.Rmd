@@ -1,0 +1,204 @@
+---
+title: "Swiftkey_Capstone_Milestone"
+author: "Mingda Wang"
+date: "Jun 11 2018"
+output: html_document
+---
+# Initial Setup
+Packages: knitr, text2vec, tokenizers, stopwords, wordcloud
+Locale: English
+Eval, Echo: True
+Seed: 12221
+
+```{r setup, message=FALSE}
+library("knitr")
+library("text2vec")
+library("tokenizers")
+library("stopwords")
+library("wordcloud")
+Sys.setlocale("LC_ALL","English")
+opts_chunk$set(eval = TRUE, echo = TRUE)
+set.seed(12221)
+```
+
+# Goal 
+The purpose of this document is to briefly summarize the main characteristics of the training data and outline the algorithm for the final word prediction data product.
+
+Training data was downloaded from the link provided in the course: https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip
+
+Note: All this study has been centered in the US English corpus.
+
+# Data Exploration
+## Prepare the Data
+While trying to load the data into R on Windows, there seems to be problems on how R on Windows handles special characters. The most troubles resulted from x00(NUL) and x1a(SUB) characters. Because it is slow and tedious to do the replacement on R, I have made a Python script to replace all NUL and SUB characters in all English text files.
+
+The Python script can be found at [here]()
+
+The Python script includes only ascii_letters, ascii_digits, whitespaces. All special characters such as !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ are replaced by a whitespace.
+
+## Loading Data
+The below script will load the data and also remove lines that are empty.
+```{r dataLoading}
+filePath <- "D:/Documents/R/final/en_US/"
+
+twitterFile <- "en_US.twitter.txt"
+blogsFile <- "en_US.blogs.txt"
+newsFile <- "en_US.news.txt"
+
+
+fileToChr <- function(filename) {
+  fileCon <- file(paste(filePath, filename, sep=""))
+  chrVec <- readLines(fileCon)
+  close(fileCon)
+  return(chrVec)
+}
+
+twitterData <- fileToChr(twitterFile)
+twitterData <- twitterData[twitterData != ""]
+
+blogsData <- fileToChr(blogsFile)
+blogsData <- blogsData[blogsData != ""]
+
+newsData <- fileToChr(newsFile)
+newsData <- newsData[newsData != ""]
+
+fileInfo <- data.frame("Filename" = c(twitterFile, blogsFile, newsFile),
+                       "Num Lines" = c(length(twitterData), length(blogsData), length(newsData)))
+
+print(fileInfo)
+```
+
+## Create Training and Testing Datasets
+```{r}
+twitterInTrain <- sample(length(twitterData), length(twitterData) * 0.8)
+twitterTrain <- twitterData[twitterInTrain]
+twitterTest <- twitterData[-twitterInTrain]
+
+blogsInTrain <- sample(length(blogsData), length(blogsData) * 0.8)
+blogsTrain <- blogsData[blogsInTrain]
+blogsTest <- blogsData[-blogsInTrain]
+
+newsInTrain <- sample(length(newsData), length(newsData) * 0.8)
+newsTrain <- newsData[newsInTrain]
+newsTest <- newsData[-newsInTrain]
+```
+
+## Save Training and Testing Datasets
+```{r}
+writeLines(twitterTrain, con="D:/Documents/R/final/en_US/twitter_Train.txt")
+writeLines(twitterTest, con="D:/Documents/R/final/en_US/twitter_Test.txt")
+
+writeLines(blogsTrain, con="D:/Documents/R/final/en_US/blogs_Train.txt")
+writeLines(blogsTest, con="D:/Documents/R/final/en_US/blogs_Test.txt")
+
+writeLines(newsTrain, con="D:/Documents/R/final/en_US/news_Train.txt")
+writeLines(newsTest, con="D:/Documents/R/final/en_US/news_Test.txt")
+```
+
+## Remove Useless Variables
+```{r}
+rm(blogsData)
+rm(twitterData)
+rm(newsData)
+
+rm(blogsFile)
+rm(newsFile)
+rm(twitterFile)
+
+rm(twitterInTrain)
+rm(blogsInTrain)
+rm(newsInTrain)
+
+rm(twitterTest)
+rm(blogsTest)
+rm(newsTest)
+
+rm(filePath)
+rm(fileToChr)
+rm(fileInfo)
+
+gc()
+```
+
+## Data Characteristics
+```{r charCount}
+twitterLineLen <- sapply(twitterTrain, FUN=nchar, USE.NAMES = FALSE)
+blogsLineLen <- sapply(blogsTrain, FUN=nchar, USE.NAMES = FALSE)
+newsLineLen <- sapply(newsTrain, FUN=nchar, USE.NAMES = FALSE)
+```
+
+### Twitter Data
+```{r twitterSummary}
+summary(twitterLineLen)
+```
+
+### Blogs Data
+```{r blogsSummary}
+summary(blogsLineLen)
+```
+
+### News Data
+```{r newsSummary}
+summary(newsLineLen)
+```
+
+We can see for both blogs and news, the median words are within the 100 to 200 range. However, the middle 50% of the news (from 1st qu to 3rd qu) seems to be more compact than blogs.
+
+## Term Vectorization
+```{r}
+twitterIoK <- itoken(twitterTrain,
+                     preprocessor = tolower,
+                     tokenizer = tokenize_words,
+                     progressbar = FALSE)
+
+twitterVocab <- create_vocabulary(twitterIoK)
+
+print(tail(twitterVocab, 5))
+```
+We can see from above that the most frequently used words are "you, a, i, to, the", these common words are usually called stop words. Since these words are so common, it makes less sense when we trying to figure our the most used words.
+## Remove Stopwords
+```{r}
+twitterVocab <- create_vocabulary(twitterIoK, stopwords = stopwords())
+
+print(tail(twitterVocab, 5))
+```
+Now, we can see a different result from our vocabulary list. From here, we can visualize our results to get a better idea on the usage of different words.
+
+## Twitter Wordcloud
+```{r}
+wordcloud(words = twitterVocab$term, freq = twitterVocab$term_count, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35, scale = c(4,0.25),
+          colors=brewer.pal(8, "Dark2"))
+```
+
+## Blogs Wordcloud
+```{r}
+blogsIoK <- itoken(blogsTrain,
+                   preprocessor = tolower,
+                   tokenizer = tokenize_words,
+                   progressbar = FALSE)
+
+blogsVocab <- create_vocabulary(blogsIoK, stopwords = stopwords())
+
+wordcloud(words = blogsVocab$term, freq = blogsVocab$term_count, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35, scale = c(4,0.2),
+          colors=brewer.pal(8, "Dark2"))
+```
+
+## News Wordcloud
+```{r}
+newsIoK <- itoken(newsTrain,
+                  preprocessor = tolower,
+                  tokenizer = tokenize_words,
+                  progressbar = FALSE)
+
+newsVocab <- create_vocabulary(newsIoK, stopwords = stopwords())
+
+wordcloud(words = newsVocab$term, freq = newsVocab$term_count, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35, scale = c(4,0.65),
+          colors=brewer.pal(8, "Dark2"))
+```
+
+# Next Step
+With the above frequency count, we have seen some of the characteristics of the word usage in different dataset. Since our final project will be predicting the next word based on the input of the user, I will consider n-grams to include a number of words instead of just a single word.
+
