@@ -8,26 +8,26 @@
 #
 
 library(shiny)
+library(markdown)
 
 # Define UI for application that draws a histogram
 shinyUI(fluidPage(
   
   # Application title
-  titlePanel("Old Faithful Geyser Data"),
+  titlePanel("Next Word Predictor"),
   
-  # Sidebar with a slider input for number of bins 
+  # Input for predictors
   sidebarLayout(
     sidebarPanel(
-       sliderInput("bins",
-                   "Number of bins:",
-                   min = 1,
-                   max = 50,
-                   value = 30)
+       textInput("input1", label = "Enter text to begin", "")
     ),
     
-    # Show a plot of the generated distribution
+    # Show predicted words
     mainPanel(
-       plotOutput("distPlot")
+      tabsetPanel(
+        tabPanel("Prediction", textOutput("output1")),
+        tabPanel("Instructions", includeMarkdown("README.MD"))
+      )
     )
   )
 ))

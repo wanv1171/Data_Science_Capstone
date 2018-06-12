@@ -279,7 +279,7 @@ ngram2 <- function(data, ngramFlag) {
     predicted <- model[model$Pred1 == strParts[length-3] & model$Pred2 == strParts[length-2] & model$Pred3 == strParts[length-1] & model$Pred4 == strParts[length],"Predicted"]
   }
   
-  ifelse(length(predicted) == 0, return(ngram(data, ngramFlag - 1)), return(predicted))
+  ifelse(length(predicted) == 0, return(ngram2(data, ngramFlag - 1)), return(predicted))
 }
 
 ngramPredict <- function(data) {

@@ -389,7 +389,7 @@ ngram2 &lt;- function(data, ngramFlag) {
     predicted &lt;- model[model$Pred1 == strParts[length-3] &amp; model$Pred2 == strParts[length-2] &amp; model$Pred3 == strParts[length-1] &amp; model$Pred4 == strParts[length],&quot;Predicted&quot;]
   }
   
-  ifelse(length(predicted) == 0, return(ngram(data, ngramFlag - 1)), return(predicted))
+  ifelse(length(predicted) == 0, return(ngram2(data, ngramFlag - 1)), return(predicted))
 }
 
 ngramPredict &lt;- function(data) {
@@ -721,15 +721,15 @@ rm(finishTime)</code></pre>
 <h4>Test Results Summary</h4>
 <pre class="r"><code>print(testData)</code></pre>
 <pre><code>##    Seed                    Model Num Tests Total Time in Seconds Accuracy
-## 1 12221   Bigram Huge Dictionary      1000                  2.77   17.4 %
-## 2 12221   Bigram Mini Dictionary      1000                  1.06     19 %
-## 3 12221  Trigram Huge Dictionary      1000                  2.86   27.6 %
-## 4 12221  Trigram Mini Dictionary      1000                  1.03   26.2 %
-## 5 12221 Fourgram Huge Dictionary      1000                  2.61   24.1 %
-## 6 12221 Fourgram Mini Dictionary      1000                  0.96   23.4 %
-## 7 12221 Fivegram Huge Dictionary      1000                  2.54   25.1 %
-## 8 12221 Fivegram Mini Dictionary      1000                  1.23   26.5 %
-## 9 12221 Mix Case Mini Dictionary       400                 23.84     24 %</code></pre>
+## 1 12221   Bigram Huge Dictionary      1000                  2.59   17.4 %
+## 2 12221   Bigram Mini Dictionary      1000                  0.84     19 %
+## 3 12221  Trigram Huge Dictionary      1000                  2.64   27.6 %
+## 4 12221  Trigram Mini Dictionary      1000                  0.76   26.2 %
+## 5 12221 Fourgram Huge Dictionary      1000                  2.42   24.1 %
+## 6 12221 Fourgram Mini Dictionary      1000                  0.74   23.4 %
+## 7 12221 Fivegram Huge Dictionary      1000                  2.43   25.1 %
+## 8 12221 Fivegram Mini Dictionary      1000                  1.08   26.5 %
+## 9 12221 Mix Case Mini Dictionary       400                   2.7   24.5 %</code></pre>
 <p>From the above results, we can see that huge dictionary generally have a better accuracy than mini dictionary. However, the difference is very small. In addition, the processing time reduction is huge, and mini dictionary uses 1/2 time of processing time needed by huge dictionary. As for the mix case, most of the time are consumed by for loop instead of lookup operation.</p>
 <p>Now, we can conclude that the mini dictionary is the best option to go, and the small resources needed by the mini dictionary makes it better for mobile devices.</p>
 </div>

@@ -11,16 +11,53 @@ library(shiny)
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
-   
-  output$distPlot <- renderPlot({
+  miniPred <- readRDS("miniDict.rds")
+  
+  ngram2 <- function(data, ngramFlag) {
+    strParts <- strsplit(data," ", fixed=TRUE)[[1]]
     
-    # generate bins based on input$bins from ui.R
-    x    <- faithful[, 2] 
-    bins <- seq(min(x), max(x), length.out = input$bins + 1)
+    length <- length(strParts)
+    model <- miniPred[[ngramFlag]]
     
-    # draw the histogram with the specified number of bins
-    hist(x, breaks = bins, col = 'darkgray', border = 'white')
+    if(ngramFlag == 1) {
+      predicted <- model
+    }
+    else if(ngramFlag == 2) {
+      predicted <- model[model$Pred1 == strParts[length],"Predicted"]
+    }
+    else if(ngramFlag == 3) {
+      predicted <- model[model$Pred1 == strParts[length-1] & model$Pred2 == strParts[length],"Predicted"]
+    }
+    else if(ngramFlag == 4) {
+      predicted <- model[model$Pred1 == strParts[length-2] & model$Pred2 == strParts[length-1] & model$Pred3 == strParts[length],"Predicted"]
+    }
+    else {
+      predicted <- model[model$Pred1 == strParts[length-3] & model$Pred2 == strParts[length-2] & model$Pred3 == strParts[length-1] & model$Pred4 == strParts[length],"Predicted"]
+    }
     
+    ifelse(length(predicted) == 0, return(ngram2(data, ngramFlag - 1)), return(predicted))
+  }
+  
+  ngramPredict <- function(data) {
+    strLength <- length(strsplit(data, " ", fixed = TRUE)[[1]])
+    ngramFlag <- strLength + 1
+    
+    if (ngramFlag > 5) {
+      ngramFlag <- 5
+    }
+    
+    ngram2(data, ngramFlag)
+  }
+  
+  output$output1 <- renderText({
+    if (nchar(input$input1) == 0) {
+      return("")
+    }
+    else {
+      prediction <- ngramPredict(input$input1)
+      
+      return(paste(shQuote(prediction, type="cmd"), collapse=", "))
+    }
   })
   
 })
