@@ -8,14 +8,16 @@ fileList = [blogs, news, twitter]
 
 for file in fileList:
 	readFile = open(file, mode="r")
-	writeFile = open("new_" + file,mode="w+")
+	writeFile = open(file + ".new",mode="w+")
 	for line in readFile:
 		newLine = ""
 		line = line.strip()
 		for character in line:
-			if character in string.printable:
+			if character in string.digits + string.ascii_letters + string.whitespace:
 				newLine += character
-				
+			elif character in string.punctuation:
+				newLine += " "
+
 		writeFile.write(newLine + "\n")
 	
 	readFile.close()

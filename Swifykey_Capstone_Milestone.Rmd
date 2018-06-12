@@ -32,7 +32,7 @@ Note: All this study has been centered in the US English corpus.
 ## Prepare the Data
 While trying to load the data into R on Windows, there seems to be problems on how R on Windows handles special characters. The most troubles resulted from x00(NUL) and x1a(SUB) characters. Because it is slow and tedious to do the replacement on R, I have made a Python script to replace all NUL and SUB characters in all English text files.
 
-The Python script can be found at [here]()
+The Python script can be found at [here](https://github.com/wanv1171/Data_Science_Capstone/blob/master/remove_special_chars.py)
 
 The Python script includes only ascii_letters, ascii_digits, whitespaces. All special characters such as !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ are replaced by a whitespace.
 
@@ -127,17 +127,17 @@ blogsLineLen <- sapply(blogsTrain, FUN=nchar, USE.NAMES = FALSE)
 newsLineLen <- sapply(newsTrain, FUN=nchar, USE.NAMES = FALSE)
 ```
 
-### Twitter Data
+### Twitter Characters per Document Data
 ```{r twitterSummary}
 summary(twitterLineLen)
 ```
 
-### Blogs Data
+### Blogs Characters per Document Data
 ```{r blogsSummary}
 summary(blogsLineLen)
 ```
 
-### News Data
+### News Characters per Document Data
 ```{r newsSummary}
 summary(newsLineLen)
 ```
@@ -167,7 +167,7 @@ Now, we can see a different result from our vocabulary list. From here, we can v
 ## Twitter Wordcloud
 ```{r}
 wordcloud(words = twitterVocab$term, freq = twitterVocab$term_count, min.freq = 1,
-          max.words=200, random.order=FALSE, rot.per=0.35, scale = c(4,0.25),
+          max.words=200, random.order=FALSE, rot.per=0.35, scale = c(4,0.4),
           colors=brewer.pal(8, "Dark2"))
 ```
 
@@ -197,6 +197,40 @@ newsVocab <- create_vocabulary(newsIoK, stopwords = stopwords())
 wordcloud(words = newsVocab$term, freq = newsVocab$term_count, min.freq = 1,
           max.words=200, random.order=FALSE, rot.per=0.35, scale = c(4,0.65),
           colors=brewer.pal(8, "Dark2"))
+```
+
+## Twitter Words Summary Without Stopwords
+#### Words' Appearances in Dcouments
+This summary shows that for the most common word, it has appeared in 222748 tweets.
+```{r}
+class(twitterVocab) <- "data.frame"
+summary(twitterVocab$doc_count)
+```
+#### Number of Unique Words
+```{r}
+print(nrow(twitterVocab))
+```
+
+## Blogs Words Summary Without Stopwords
+#### Words' Appearances in Dcouments
+```{r}
+class(blogsVocab) <- "data.frame"
+summary(blogsVocab$doc_count)
+```
+#### Number of Unique Words
+```{r}
+print(nrow(blogsVocab))
+```
+
+## News Words Summary Without Stopwords
+#### Words' Appearances in Dcouments
+```{r}
+class(newsVocab) <- "data.frame"
+summary(newsVocab$doc_count)
+```
+#### Number of Unique Words
+```{r}
+print(nrow(newsVocab))
 ```
 
 # Next Step
