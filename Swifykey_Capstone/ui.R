@@ -25,7 +25,7 @@ shinyUI(fluidPage(
     # Show predicted words
     mainPanel(
       tabsetPanel(
-        tabPanel("Prediction", textOutput("output1")),
+        tabPanel("Prediction", verbatimTextOutput("output1")),
         tabPanel("Instructions", includeMarkdown("README.MD"))
       )
     )

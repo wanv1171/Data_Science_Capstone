@@ -56,7 +56,14 @@ shinyServer(function(input, output) {
     else {
       prediction <- ngramPredict(input$input1)
       
-      return(paste(shQuote(prediction, type="cmd"), collapse=", "))
+      returnVals <- ""
+      
+      for (predicted in prediction) {
+        predicted <- paste(predicted, "\n", sep="", collapse = "")
+        returnVals <- paste(returnVals, predicted, sep="", collapse = "")
+      }
+      
+      returnVals
     }
   })
   
